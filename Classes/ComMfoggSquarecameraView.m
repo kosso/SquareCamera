@@ -17,6 +17,17 @@
 
 // used for KVO observation of the @"capturingStillImage" property to perform flash bulb animation
 static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCaptureStillImageIsCapturingStillImageContext";
+CGFloat lastScale = 1.0;
+CGFloat lastRotation = 1.0;
+CGFloat currentX = 0.0;
+CGFloat currentY = 0.0;
+CGFloat currentScale = 1.0;
+CGFloat currentRotation = 0.0;
+CGAffineTransform currentTransform;
+
+CGFloat firstX;
+CGFloat firstY;
+
 
 - (void) dealloc
 {
@@ -44,7 +55,11 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
   // Set defaults
   self.camera = @"back"; // Default camera is 'back'
   self.frontQuality = AVCaptureSessionPresetHigh; // Default front quality is high
-  self.backQuality = AVCaptureSessionPreset1920x1080; // Default back quality is HD
+  self.backQuality = AVCaptureSessionPresetHigh; // AVCaptureSessionPreset1920x1080; // Default back quality is HD
+  
+
+  
+
 };
 
 -(void)frameSizeChanged:(CGRect)frame bounds:(CGRect)bounds
@@ -52,6 +67,33 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
     // This is initializing the square view
     [TiUtils setView:self.square positionRect:bounds];
 
+    // www.icodeblog.com/2010/10/14/working-with-uigesturerecognizers/
+    
+    // click event
+    UITapGestureRecognizer *tapRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(clicked:)];
+    [tapRecognizer setNumberOfTapsRequired:1];
+    [tapRecognizer setDelegate:self];
+    [self.square addGestureRecognizer:tapRecognizer];
+    // pinch event
+    UIPinchGestureRecognizer *pinchRecognizer = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(scale:)];
+    [pinchRecognizer setDelegate:self];
+    [self.square addGestureRecognizer:pinchRecognizer];
+    
+    /*
+    // Experiments.
+    UIRotationGestureRecognizer *rotationRecognizer = [[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(rotate:)];
+    [rotationRecognizer setDelegate:self];
+    [self.square addGestureRecognizer:rotationRecognizer];
+     
+    // Slightly pointless. For lazy people who can't turn their wrist.
+    UIPanGestureRecognizer *panRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(move:)];
+    [panRecognizer setMinimumNumberOfTouches:1];
+    [panRecognizer setMaximumNumberOfTouches:1];
+    [panRecognizer setDelegate:self];
+    [self.square addGestureRecognizer:panRecognizer];
+    */
+    
+    
     if(self.captureSession){
         if(![self.captureSession isRunning]){
             [self.captureSession startRunning];
@@ -133,60 +175,57 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
   [self.stillImageOutput captureStillImageAsynchronouslyFromConnection:stillImageConnection completionHandler: ^(CMSampleBufferRef imageSampleBuffer, NSError *error)
   { 
 
-    CFDictionaryRef exifAttachments = CMGetAttachment(imageSampleBuffer, kCGImagePropertyExifDictionary, NULL);
-    if (exifAttachments) {
-      NSLog(@"[INFO] imageSampleBuffer Exif attachments: %@", exifAttachments);
-    } else { 
-      NSLog(@"[INFO] No imageSampleBuffer Exif attachments");
-    }
+        CFDictionaryRef exifAttachments = CMGetAttachment(imageSampleBuffer, kCGImagePropertyExifDictionary, NULL);
+        if (exifAttachments) {
+          //NSLog(@"[INFO] imageSampleBuffer Exif attachments: %@", exifAttachments);
+        } else { 
+          //NSLog(@"[INFO] No imageSampleBuffer Exif attachments");
+        }
 
-    NSData *imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageSampleBuffer];    
+        NSData *imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageSampleBuffer];    
 
-    UIImage *image = [[UIImage alloc] initWithData:imageData];
+        UIImage *image = [[UIImage alloc] initWithData:imageData];
 
-    CGSize size = image.size;  // this will be the full size of the screen 
+        CGSize size = image.size;  // this will be the full size of the screen
+        //NSLog(@"image.size : %@", NSStringFromCGSize(size));
 
-    NSLog(@"image.size : %@", NSStringFromCGSize(size));
-
-    CGFloat image_width = self.stillImage.frame.size.width*2;
-    CGFloat image_height = self.stillImage.frame.size.height*2;
-
-    CGRect cropRect = CGRectMake(
-      0,
-      0,
-      image_width,
-      image_height
-      );
-
-    NSLog(@"cropRect : %@", NSStringFromCGRect(cropRect));
-
-
-    CGRect customImageRect = CGRectMake(
-      -((((cropRect.size.width/size.width)*size.height)-cropRect.size.height)/2),
-      0,
-      ((cropRect.size.width/size.width)*size.height),
-      cropRect.size.width);
-    
-    UIGraphicsBeginImageContext(cropRect.size);
-    CGContextRef context = UIGraphicsGetCurrentContext();  
-    
-    CGContextScaleCTM(context, 1.0, -1.0);  
-    CGContextRotateCTM(context, -M_PI/2);  
-    
-    CGContextDrawImage(context, customImageRect,
-      image.CGImage);
-    
-    UIImage *croppedImage = UIGraphicsGetImageFromCurrentImageContext();  
-    UIGraphicsEndImageContext();          
-    
-    TiBlob *imageBlob = [[TiBlob alloc] initWithImage:[self flipImage:croppedImage]]; // maybe try image here 
-    NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
-                          self.camera, @"camera",
-                          imageBlob, @"media",
-                          nil];
-    
-    // HURRAH! 
-    [self.proxy fireEvent:@"success" withObject:event];
+      
+        CGFloat image_width = self.stillImage.frame.size.width*2;
+        CGFloat image_height = self.stillImage.frame.size.height*2;
+      
+        CGRect cropRect = CGRectMake(
+          0,
+          0,
+          image_width,
+          image_height
+          );
+ 
+        CGRect customImageRect = CGRectMake(
+          -((((cropRect.size.width/size.width)*size.height)-cropRect.size.height)/2),
+          0,
+          ((cropRect.size.width/size.width)*size.height),
+          cropRect.size.width);
+        
+        UIGraphicsBeginImageContext(cropRect.size);
+      
+        CGContextRef context = UIGraphicsGetCurrentContext();  
+        
+        CGContextScaleCTM(context, 1.0, -1.0);
+        CGContextRotateCTM(context, -M_PI/2);
+      
+        CGContextDrawImage(context, customImageRect, image.CGImage);
+        
+        UIImage *croppedImage = UIGraphicsGetImageFromCurrentImageContext();  
+        UIGraphicsEndImageContext();          
+        
+        TiBlob *imageBlob = [[TiBlob alloc] initWithImage:[self flipImage:croppedImage]]; // maybe try image here 
+        NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
+                               self.camera, @"camera",
+                               imageBlob, @"media",
+                               nil];
+        
+        // HURRAH! 
+        [self.proxy fireEvent:@"success" withObject:event];
 
     }];
 };
@@ -328,18 +367,28 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
             // Now set it to the new session preset
             if ([self.captureSession canSetSessionPreset:quality] == YES) {
                 // If you can set to this quality, do it!
-                NSLog(@"[INFO] Setting camera quality to: %@", quality);
+                //NSLog(@"[INFO] Setting camera quality to: %@", quality);
                 self.captureSession.sessionPreset = quality;
                 
             } else {
                 // If not... fallback to high quality
-                NSLog(@"[WARN]: Can not use camera quality '%@'. Defaulting to High.", quality);
+                //NSLog(@"[WARN]: Can not use camera quality '%@'. Defaulting to High.", quality);
                 self.captureSession.sessionPreset = AVCaptureSessionPresetHigh;
             };
             
             break;
         };
     };
+
+    if(self.isVideoRecorder){
+
+      AVCaptureDevice *mic = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+      AVCaptureDeviceInput *micinput = [AVCaptureDeviceInput deviceInputWithDevice:mic error:nil];
+      [self.captureSession addInput:micinput];
+
+
+    }
+
 };
 
 -(UIView*)square
@@ -366,15 +415,20 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
 
       if([self.captureDevice lockForConfiguration:true]){
                 
-                if([self.captureDevice isFlashModeSupported:AVCaptureFlashModeOff]){
-                    [self.captureDevice setFlashMode:AVCaptureFlashModeOff];
-                    self.flashOn = NO;
-                };
+        if([self.captureDevice isFlashModeSupported:AVCaptureFlashModeOff]){
+            [self.captureDevice setFlashMode:AVCaptureFlashModeOff];
+            self.flashOn = NO;
+        };
+          
+        // Auto-focus : TODO : make settable
+        [self.captureDevice setFocusMode:AVCaptureFocusModeContinuousAutoFocus];
                 
         [self.captureDevice lockForConfiguration:false];
       };
 
-      // Set the default camera
+        
+    
+      // Sets the default camera
       [self setCaptureDevice];
 
       NSError *error = nil;
@@ -387,54 +441,74 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
 
       [self.videoDataOutput setSampleBufferDelegate:self queue:videoDataOutputQueue];
 
-      self.stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
 
-      [self.stillImageOutput addObserver:self forKeyPath:@"capturingStillImage" options:NSKeyValueObservingOptionNew context:AVCaptureStillImageIsCapturingStillImageContext];
+      if(self.isVideoRecorder){
 
-      NSDictionary *outputSettings = [[NSDictionary alloc] initWithObjectsAndKeys: AVVideoCodecJPEG, AVVideoCodecKey, nil];
-      [self.stillImageOutput setOutputSettings:outputSettings];
 
-      [self.captureSession addOutput:self.stillImageOutput];
-
-      [outputSettings release];
-
-      NSDictionary *rgbOutputSettings = [NSDictionary dictionaryWithObject:
-        [NSNumber numberWithInt:kCMPixelFormat_32BGRA] forKey:(id)kCVPixelBufferPixelFormatTypeKey];
-
-      [self.videoDataOutput setVideoSettings:rgbOutputSettings];
-
-      [self.captureSession addOutput:self.videoDataOutput];
-
-      if(self.detectCodes){
-
-        // Kosso : Add built-in 2d code detection. Requires iOS 7+
-        AVCaptureMetadataOutput *metadataOutput = [[AVCaptureMetadataOutput alloc] init];
-        [self.captureSession addOutput:metadataOutput];
-        [metadataOutput setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
-        // Available types : https://developer.apple.com/library/prerelease/ios/documentation/AVFoundation/Reference/AVMetadataMachineReadableCodeObject_Class/index.html#//apple_ref/doc/constant_group/Machine_Readable_Object_Types
+        // todo... sort out video+audio recording : with pause/resume
         /*
-           NSString *const AVMetadataObjectTypeUPCECode;
-           NSString *const AVMetadataObjectTypeCode39Code;
-           NSString *const AVMetadataObjectTypeCode39Mod43Code;
-           NSString *const AVMetadataObjectTypeEAN13Code;
-           NSString *const AVMetadataObjectTypeEAN8Code;
-           NSString *const AVMetadataObjectTypeCode93Code;
-           NSString *const AVMetadataObjectTypeCode128Code;
-           NSString *const AVMetadataObjectTypePDF417Code;
-           NSString *const AVMetadataObjectTypeQRCode;
-           NSString *const AVMetadataObjectTypeAztecCode;
-           NSString *const AVMetadataObjectTypeInterleaved2of5Code;
-           NSString *const AVMetadataObjectTypeITF14Code;
-           NSString *const AVMetadataObjectTypeDataMatrixCode;
-
-          AVMetadataObjectTypeUPCECode, AVMetadataObjectTypeCode39Code, AVMetadataObjectTypeCode39Mod43Code, AVMetadataObjectTypeEAN13Code, AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode93Code, AVMetadataObjectTypeCode128Code, AVMetadataObjectTypePDF417Code, AVMetadataObjectTypeQRCode, AVMetadataObjectTypeAztecCode, AVMetadataObjectTypeInterleaved2of5Code, AVMetadataObjectTypeITF14Code, AVMetadataObjectTypeDataMatrixCode
-
+        // video?
+        NSDictionary* setcapSettings = [NSDictionary dictionaryWithObjectsAndKeys:
+        [NSNumber numberWithInt:kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange], kCVPixelBufferPixelFormatTypeKey,nil];
         */
 
-        [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode39Mod43Code, AVMetadataObjectTypeUPCECode, AVMetadataObjectTypeCode39Code, AVMetadataObjectTypeQRCode, AVMetadataObjectTypeEAN13Code, AVMetadataObjectTypeDataMatrixCode, AVMetadataObjectTypeAztecCode]];
+
+
+      } else {
+
+        self.stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
+
+
+        [self.stillImageOutput addObserver:self forKeyPath:@"capturingStillImage" options:NSKeyValueObservingOptionNew context:AVCaptureStillImageIsCapturingStillImageContext];
+
+        NSDictionary *outputSettings = [[NSDictionary alloc] initWithObjectsAndKeys: AVVideoCodecJPEG, AVVideoCodecKey, nil];
+        [self.stillImageOutput setOutputSettings:outputSettings];
+
+        [self.captureSession addOutput:self.stillImageOutput];
+
+        [outputSettings release];
+
+
+        NSDictionary *rgbOutputSettings = [NSDictionary dictionaryWithObject:
+          [NSNumber numberWithInt:kCMPixelFormat_32BGRA] forKey:(id)kCVPixelBufferPixelFormatTypeKey];
+
+
+
+        // photo / still image.
+        [self.videoDataOutput setVideoSettings:rgbOutputSettings];
+        [self.captureSession addOutput:self.videoDataOutput];
+
+        if(self.detectCodes){
+          // Kosso : Add built-in 2d code detection. Requires iOS 7+
+          AVCaptureMetadataOutput *metadataOutput = [[AVCaptureMetadataOutput alloc] init];
+          [self.captureSession addOutput:metadataOutput];
+          [metadataOutput setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
+          // Available types : https://developer.apple.com/library/prerelease/ios/documentation/AVFoundation/Reference/AVMetadataMachineReadableCodeObject_Class/index.html#//apple_ref/doc/constant_group/Machine_Readable_Object_Types
+          /*
+             NSString *const AVMetadataObjectTypeUPCECode;
+             NSString *const AVMetadataObjectTypeCode39Code;
+             NSString *const AVMetadataObjectTypeCode39Mod43Code;
+             NSString *const AVMetadataObjectTypeEAN13Code;
+             NSString *const AVMetadataObjectTypeEAN8Code;
+             NSString *const AVMetadataObjectTypeCode93Code;
+             NSString *const AVMetadataObjectTypeCode128Code;
+             NSString *const AVMetadataObjectTypePDF417Code;
+             NSString *const AVMetadataObjectTypeQRCode;
+             NSString *const AVMetadataObjectTypeAztecCode;
+             NSString *const AVMetadataObjectTypeInterleaved2of5Code;
+             NSString *const AVMetadataObjectTypeITF14Code;
+             NSString *const AVMetadataObjectTypeDataMatrixCode;
+            AVMetadataObjectTypeUPCECode, AVMetadataObjectTypeCode39Code, AVMetadataObjectTypeCode39Mod43Code, AVMetadataObjectTypeEAN13Code, AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode93Code, AVMetadataObjectTypeCode128Code, AVMetadataObjectTypePDF417Code, AVMetadataObjectTypeQRCode, AVMetadataObjectTypeAztecCode, AVMetadataObjectTypeInterleaved2of5Code, AVMetadataObjectTypeITF14Code, AVMetadataObjectTypeDataMatrixCode
+          */
+
+          [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode39Mod43Code, AVMetadataObjectTypeUPCECode, AVMetadataObjectTypeCode39Code, AVMetadataObjectTypeQRCode, AVMetadataObjectTypeEAN13Code, AVMetadataObjectTypeAztecCode]];
+        }
+        [[self.videoDataOutput connectionWithMediaType:AVMediaTypeVideo] setEnabled:NO];
+
+
       }
 
-      [[self.videoDataOutput connectionWithMediaType:AVMediaTypeVideo] setEnabled:NO];
+
 
       // and off we go! ...
       if(![self.captureSession isRunning]){
@@ -453,6 +527,8 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
       
     } else {
       // If camera is NOT avaialble
+        NSLog(@"[INFO] No camera.");
+
       [self.proxy fireEvent:@"noCamera"];
     };        
   };
@@ -534,6 +610,16 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
 }
 
 
+-(void)setIsVideoRecorder_:(id)arg
+{
+  self.isVideoRecorder = [TiUtils boolValue:arg def:NO];
+}
+
+
+-(BOOL) isVideoRecorder {
+  return _isVideoRecorder;
+}
+
 // utility routing used during image capture to set up capture orientation
 - (AVCaptureVideoOrientation)avOrientationForDeviceOrientation:(UIDeviceOrientation)deviceOrientation
 {
@@ -544,6 +630,107 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
     result = AVCaptureVideoOrientationLandscapeLeft;
   return result;
 };
+
+// Attempting pinch/zoom/rotate/move
+
+-(void)rotate:(id)sender {
+    
+    [self.square bringSubviewToFront:[(UIRotationGestureRecognizer*)sender view]];
+    if([(UIRotationGestureRecognizer*)sender state] == UIGestureRecognizerStateEnded) {
+        lastRotation = 0.0;
+        return;
+    }
+    
+    CGFloat rotation = 0.0 - (lastRotation - [(UIRotationGestureRecognizer*)sender rotation]);
+    CGAffineTransform thisTransform = [(UIPinchGestureRecognizer*)sender view].transform;
+    CGAffineTransform newTransform = CGAffineTransformRotate(thisTransform,rotation);
+    
+    [[(UIRotationGestureRecognizer*)sender view] setTransform:newTransform];
+    lastRotation = [(UIRotationGestureRecognizer*)sender rotation];
+    currentTransform = newTransform;
+    currentRotation = lastRotation;
+}
+
+
+-(void)scale:(id)sender {
+    
+    [self.square bringSubviewToFront:[(UIPinchGestureRecognizer*)sender view]];
+    if([(UIPinchGestureRecognizer*)sender state] == UIGestureRecognizerStateEnded) {
+        lastScale = 1.0;
+        return;
+    }
+    
+    CGFloat scale = 1.0 - (lastScale - [(UIPinchGestureRecognizer*)sender scale]);
+    
+    CGFloat pinchscale = [(UIPinchGestureRecognizer*)sender scale];
+    
+    
+    // NSLog(@"pinchscale: %f", pinchscale);
+    
+    //NSLog(@"calc scale: %f", scale);
+    
+    /*
+    // scale the square view
+    CGAffineTransform currentTransform = [(UIPinchGestureRecognizer*)sender view].transform;
+    CGAffineTransform newTransform = CGAffineTransformScale(currentTransform, scale, scale);
+    [[(UIPinchGestureRecognizer*)sender view] setTransform:newTransform];
+    */
+    
+ 
+    // Just discovered since 7.0 you can zoom the camera itself. This should save a lot of CGImage acrobatics when we come to save the final cropped image.
+    // So..
+    if(scale < 1.0){
+        return;
+    }
+    NSError *error = nil;
+    if ([self.captureDevice lockForConfiguration:&error]) {
+        self.captureDevice.videoZoomFactor = scale;
+        [self.captureDevice unlockForConfiguration];
+    } else {
+        NSLog(@"error: %@", error);
+    }
+    
+    lastScale = scale;
+
+}
+
+
+-(void)move:(id)sender {
+    
+    [[[(UITapGestureRecognizer*)sender view] layer] removeAllAnimations];
+    
+    [self.square bringSubviewToFront:[(UIPanGestureRecognizer*)sender view]];
+    CGPoint translatedPoint = [(UIPanGestureRecognizer*)sender translationInView:self];
+    
+    if([(UIPanGestureRecognizer*)sender state] == UIGestureRecognizerStateBegan) {
+        
+        firstX = [[sender view] center].x;
+        firstY = [[sender view] center].y;
+    }
+    
+    translatedPoint = CGPointMake(firstX+translatedPoint.x, firstY+translatedPoint.y);
+    
+    currentX = translatedPoint.x;
+    currentY = translatedPoint.y;
+    
+    [[sender view] setCenter:translatedPoint];
+    
+}
+
+-(void)clicked:(id)sender {
+    
+    [[[(UITapGestureRecognizer*)sender view] layer] removeAllAnimations];
+    if([self.proxy _hasListeners:@"click"]){
+        [self.proxy fireEvent:@"click"];
+    }
+}
+
+
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    
+    return ![gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]];
+}
 
 
 #pragma mark AVCaptureMetadataOutputObjectsDelegate
@@ -596,7 +783,7 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
     {
       code_type = @"AztecCode";
     }
-    else if ([metadataObject.type isEqualToString:AVMetadataObjectTypeInterleaved2of5Code])
+    /*else if ([metadataObject.type isEqualToString:AVMetadataObjectTypeInterleaved2of5Code])
     {
       code_type = @"Interleaved2of5Code";
     }
@@ -608,6 +795,7 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext = @"AVCap
     {
       code_type = @"DataMatrixCode";
     }
+    */
 
     if([self.proxy _hasListeners:@"code"]){
       NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
