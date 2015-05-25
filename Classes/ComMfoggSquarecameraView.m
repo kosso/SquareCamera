@@ -653,6 +653,8 @@ CGFloat firstY;
 
 
 -(void)scale:(id)sender {
+
+    // This whole thing still isn't quite right...
     
     [self.square bringSubviewToFront:[(UIPinchGestureRecognizer*)sender view]];
     if([(UIPinchGestureRecognizer*)sender state] == UIGestureRecognizerStateEnded) {
@@ -664,20 +666,18 @@ CGFloat firstY;
     
     CGFloat pinchscale = [(UIPinchGestureRecognizer*)sender scale];
     
-    
     // NSLog(@"pinchscale: %f", pinchscale);
-    
-    //NSLog(@"calc scale: %f", scale);
+    // NSLog(@"calc scale: %f", scale);
     
     /*
     // scale the square view
     CGAffineTransform currentTransform = [(UIPinchGestureRecognizer*)sender view].transform;
     CGAffineTransform newTransform = CGAffineTransformScale(currentTransform, scale, scale);
     [[(UIPinchGestureRecognizer*)sender view] setTransform:newTransform];
+    lastScale = pinchscale;
     */
     
- 
-    // Just discovered since 7.0 you can zoom the camera itself. This should save a lot of CGImage acrobatics when we come to save the final cropped image.
+    // Great. I just discovered since 7.0 you can zoom the camera itself. This should save a lot of CGImage acrobatics when we come to save the final cropped image.
     // So..
     if(scale < 1.0){
         return;
